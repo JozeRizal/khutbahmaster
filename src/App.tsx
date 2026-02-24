@@ -344,6 +344,7 @@ export default function App() {
   const [scrollSpeed, setScrollSpeed] = useState(0);
   const [isScrolling, setIsScrolling] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollAccumulatorRef = useRef(0);
@@ -370,7 +371,7 @@ export default function App() {
     const finalKey = process.env.GEMINI_API_KEY;
     
     if (!finalKey) {
-      setError("API Key tidak ditemukan. Pastikan Anda sudah menambahkan VITE_GEMINI_API_KEY di .env atau Vercel.");
+      setError("API Key tidak ditemukan. Pastikan Anda sudah menambahkan GEMINI_API_KEY di Vercel.");
       return;
     }
 
@@ -455,6 +456,7 @@ export default function App() {
     ));
   };
 
+  // 1. Tampilan Layar Utama & Preview Modal (Menggunakan Tailwind Modern)
   const renderScriptContent = (mode: 'screen' | 'print') => {
     const isPrint = mode === 'print';
     const fSize = isPrint ? '12pt' : `${fontSize}px`;
@@ -533,312 +535,509 @@ export default function App() {
     );
   };
 
-  // --- SOLUSI BARU: Gunakan Native Browser Print ---
+  // 2. Tampilan Khusus PDF (Bebas dari Tailwind v4 & "oklch" error)
+  const generatePdfHtmlString = () => {
+    const escapeHTML = (str?: string) => {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, 
+        (tag) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    };
+
+    let html = `
+      <div style="font-family: Georgia, serif; color: #1c1917; background-color: #ffffff; padding: 20px 40px; max-width: 800px; margin: 0 auto;">
+        <div style="text-align: center; border-bottom: 2px solid #881337; padding-bottom: 16px; margin-bottom: 32px;">
+          <h1 style="font-size: 28px; font-weight: bold; color: #881337; margin: 0 0 8px 0; font-family: serif;">Naskah Khutbah</h1>
+          <p style="font-size: 14px; color: #78716c; font-family: monospace; margin: 0;">${escapeHTML(topic)} &bull; ${escapeHTML(audience)}</p>
+        </div>
+    `;
+
+    script.forEach(block => {
+      const mainText = block.text || block.content || block.content_text || block.explanation || block.meat || block.story;
+      const cue = block.cue || block.cues || (block.type === 'cues' ? (block.text || block.content) : null);
+
+      html += `<div style="margin-bottom: 32px; page-break-inside: avoid;">`;
+
+      if (cue) {
+        html += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #92400e; margin-bottom: 16px; font-family: sans-serif;">💡 ${escapeHTML(cue)}</div>`;
+      }
+
+      if (block.title) {
+        html += `
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+            <div style="flex: 1; height: 1px; background-color: #d6d3d1;"></div>
+            <span style="font-size: 10px; font-weight: bold; color: #a8a29e; text-transform: uppercase; letter-spacing: 2px; font-family: sans-serif;">${escapeHTML(block.title)}</span>
+            <div style="flex: 1; height: 1px; background-color: #d6d3d1;"></div>
+          </div>
+        `;
+      }
+
+      if (block.arabic && block.arabic.length > 2) {
+        html += `<div style="font-family: 'Traditional Arabic', 'Amiri', serif; text-align: right; line-height: 2.2; margin-bottom: 24px; padding: 16px; background-color: #fafaf9; border-radius: 8px; border: 1px solid #e7e5e4; font-size: 22px;">${escapeHTML(block.arabic)}</div>`;
+      }
+
+      if (mainText) {
+        html += `<div style="font-family: Georgia, serif; line-height: 1.8; color: #1c1917; font-size: 13pt; margin-bottom: 16px;">`;
+        if (block.greeting) {
+          html += `<p style="font-weight: bold; color: #9f1239; margin-bottom: 8px;">${escapeHTML(block.greeting)}</p>`;
+        }
+
+        const sentences = escapeHTML(mainText).split('. ');
+        let currentPara = "";
+        sentences.forEach((sentence, index) => {
+          const s = sentence + (index < sentences.length - 1 ? '. ' : '');
+          if ((currentPara + s).length > 450) {
+            if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify;">${currentPara}</p>`;
+            currentPara = s;
+          } else {
+            currentPara += s;
+          }
+        });
+        if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify;">${currentPara}</p>`;
+        html += `</div>`;
+      }
+
+      if (block.dalil && (block.dalil.arabic || block.dalil.meaning)) {
+        html += `
+          <div style="margin-top: 16px; padding: 16px; border: 1px solid #e7e5e4; border-radius: 12px; background-color: #ffffff;">
+            <span style="background-color: #ffe4e6; color: #9f1239; font-weight: bold; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; font-size: 10px; font-family: sans-serif;">Dalil</span>
+            <p style="font-family: 'Traditional Arabic', 'Amiri', serif; text-align: right; font-size: 20px; margin-top: 12px; margin-bottom: 8px; line-height: 2;">${escapeHTML(block.dalil.arabic || '')}</p>
+            <p style="font-size: 12px; color: #b45309; font-weight: bold; margin-top: 8px; margin-bottom: 4px; font-family: sans-serif;">${escapeHTML(block.dalil.source || '')}</p>
+            <p style="font-size: 14px; color: #78716c; font-style: italic; margin-top: 4px; margin-bottom: 0;">"${escapeHTML(block.dalil.meaning || '')}"</p>
+          </div>
+        `;
+      }
+
+      if (block.doa_arabic && block.doa_arabic.length > 2) {
+        html += `
+          <div style="margin-top: 32px; text-align: center; padding: 24px; border-radius: 16px; border: 2px solid #881337; page-break-inside: avoid;">
+            <p style="font-family: 'Traditional Arabic', 'Amiri', serif; font-size: 26px; line-height: 2.2; margin-bottom: 16px;">${escapeHTML(block.doa_arabic)}</p>
+            <p style="font-weight: bold; color: #b45309; font-family: sans-serif; font-size: 16px;">${escapeHTML(block.salam || "Wassalamu'alaikum Wr. Wb.")}</p>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+    });
+
+    html += `
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e7e5e4; text-align: center; font-size: 10px; color: #a8a29e; font-family: monospace;">
+          Dibuat secara otomatis dengan Khutbah Master AI - by Joze Rizal
+        </div>
+      </div>
+    `;
+
+    return html;
+  };
+
+  // 3. Eksekusi Download PDF (Metode Blob Anti-Freeze)
   const handleDownloadPdf = () => {
-    // Memanggil dialog Print bawaan browser. Jauh lebih ringan dan cepat!
-    window.print();
+    setIsDownloading(true);
+    const htmlContent = generatePdfHtmlString();
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.left = '-10000px'; 
+    iframe.style.width = '1024px'; 
+    iframe.style.height = '100vh';
+    document.body.appendChild(iframe);
+
+    const idoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!idoc) {
+      alert("Gagal menyiapkan dokumen. Silakan coba lagi.");
+      setIsDownloading(false);
+      return;
+    }
+
+    const messageHandler = (event: MessageEvent) => {
+      if (event.data && typeof event.data === 'object') {
+        if (event.data.type === 'pdf_success') {
+          try {
+            const dataURI = event.data.data;
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: mimeString });
+            const blobUrl = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `Naskah_Khutbah_${topic.substring(0, 15).replace(/\s+/g, '_')}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            
+            setTimeout(() => {
+              document.body.removeChild(link);
+              URL.revokeObjectURL(blobUrl);
+            }, 100);
+          } catch (e) {
+            alert("Terjadi gangguan saat menyimpan PDF ke perangkat Anda.");
+          }
+          cleanup();
+        } else if (event.data.type === 'pdf_error') {
+          alert("Gagal memproses naskah: " + event.data.message);
+          cleanup();
+        }
+      }
+    };
+
+    const cleanup = () => {
+      setIsDownloading(false);
+      window.removeEventListener('message', messageHandler);
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 500);
+    };
+
+    window.addEventListener('message', messageHandler);
+
+    idoc.open();
+    idoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <script 
+            src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+            onerror="window.parent.postMessage({type: 'pdf_error', message: 'Koneksi internet bermasalah saat memuat sistem PDF.'}, '*')"
+          ></script>
+        </head>
+        <body style="margin: 0; background: #ffffff;">
+          <div id="pdf-root">${htmlContent}</div>
+          <script>
+            window.onload = function() {
+              try {
+                var element = document.getElementById('pdf-root');
+                var opt = {
+                  margin: [15, 10, 15, 10],
+                  image: { type: 'jpeg', quality: 0.98 },
+                  html2canvas: { scale: 1.5, useCORS: true, logging: false },
+                  jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                html2pdf().set(opt).from(element).toPdf().get('pdf').then(function(pdf) {
+                  var dataUri = pdf.output('datauristring');
+                  window.parent.postMessage({ type: 'pdf_success', data: dataUri }, '*');
+                }).catch(function(err) {
+                  window.parent.postMessage({ type: 'pdf_error', message: err.message || String(err) }, '*');
+                });
+              } catch(e) {
+                window.parent.postMessage({ type: 'pdf_error', message: e.message }, '*');
+              }
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    idoc.close();
   };
 
   return (
-    <>
-      {/* Bagian ini adalah UI Utama Aplikasi.
-        Terdapat class "print:hidden" yang artinya bagian ini akan otomatis
-        hilang/disembunyikan oleh browser SAAT fitur Print dijalankan.
-      */}
-      <div className="min-h-screen flex flex-col print:hidden">
-        {/* HEADER */}
-        <header className="bg-rose-950 border-b border-rose-900 sticky top-0 z-30 shadow-md pt-[env(safe-area-inset-top)]">
-          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="bg-rose-900 border border-rose-800 text-amber-400 p-2 rounded-lg shadow-inner">
-                <MimbarIcon className="w-5 h-5" />
-              </div>
-              <h1 className="text-xl font-bold tracking-tight text-white">
-                Khutbah<span className="text-amber-400">Master</span>
-              </h1>
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[#FDFBF7]">
+      {/* HEADER */}
+      <header className="bg-rose-950 border-b border-rose-900 sticky top-0 z-30 shadow-md pt-[env(safe-area-inset-top)]">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-rose-900 border border-rose-800 text-amber-400 p-2 rounded-lg shadow-inner">
+              <MimbarIcon className="w-5 h-5" />
             </div>
+            <h1 className="text-xl font-bold tracking-tight text-white">
+              Khutbah<span className="text-amber-400">Master</span>
+            </h1>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="flex-1 max-w-5xl mx-auto px-4 py-8 relative w-full">
-          <AnimatePresence mode="wait">
-            {step === 'input' && (
-              <motion.section
-                key="input"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="max-w-2xl mx-auto space-y-6 w-full"
-              >
-                <div className="bg-white p-8 rounded-2xl shadow-xl border border-stone-200 overflow-hidden relative">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-700 via-amber-500 to-rose-700"></div>
-                  <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-rose-950 font-serif">Naskah Khutbah</h2>
+      <main className="flex-1 max-w-5xl mx-auto px-4 py-8 relative w-full">
+        <AnimatePresence mode="wait">
+          {step === 'input' && (
+            <motion.section
+              key="input"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-2xl mx-auto space-y-6 w-full"
+            >
+              <div className="bg-white p-8 rounded-2xl shadow-xl border border-stone-200 overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-700 via-amber-500 to-rose-700"></div>
+                <div className="text-center mb-8">
+                  <h2 className="text-3xl font-bold text-rose-950 font-serif">Naskah Khutbah</h2>
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 text-red-700 border border-red-100 p-4 rounded-xl flex items-start gap-3 text-sm font-medium mb-6">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <p>{error}</p>
+                  </div>
+                )}
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Topik Kajian</label>
+                    <input
+                      type="text"
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="w-full p-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-medium"
+                    />
+                    <select
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                    >
+                      <option value="">...pilih inspirasi topik Ramadhan</option>
+                      {RAMADHAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                    >
+                      <option value="">...pilih inspirasi topik Jumatan</option>
+                      {JUMATAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                    >
+                      <option value="">...pilih inspirasi topik Takziah & Kematian</option>
+                      {TAKZIAH_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                    >
+                      <option value="">...pilih inspirasi topik Idul Fitri</option>
+                      {IDUL_FITRI_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                    >
+                      <option value="">...pilih inspirasi topik Nasihat Pernikahan</option>
+                      {PERNIKAHAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
 
-                  {error && (
-                    <div className="bg-red-50 text-red-700 border border-red-100 p-4 rounded-xl flex items-start gap-3 text-sm font-medium mb-6">
-                      <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                      <p>{error}</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Topik Kajian</label>
-                      <input
-                        type="text"
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="w-full p-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-medium"
-                      />
+                      <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Audiens</label>
                       <select
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
+                        value={audience}
+                        onChange={(e) => setAudience(e.target.value)}
+                        className="w-full p-3 border border-stone-300 rounded-lg bg-white outline-none"
                       >
-                        <option value="">...pilih inspirasi topik Ramadhan</option>
-                        {RAMADHAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <select
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
-                      >
-                        <option value="">...pilih inspirasi topik Jumatan</option>
-                        {JUMATAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <select
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
-                      >
-                        <option value="">...pilih inspirasi topik Takziah & Kematian</option>
-                        {TAKZIAH_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <select
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
-                      >
-                        <option value="">...pilih inspirasi topik Idul Fitri</option>
-                        {IDUL_FITRI_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <select
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="mt-2 w-full p-2 bg-stone-100 text-sm rounded border border-stone-200 outline-none text-stone-600"
-                      >
-                        <option value="">...pilih inspirasi topik Nasihat Pernikahan</option>
-                        {PERNIKAHAN_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                        <option>Umum</option>
+                        <option>Anak Muda / Milenial</option>
+                        <option>Bapak-bapak</option>
+                        <option>Ibu-ibu Pengajian</option>
                       </select>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Audiens</label>
-                        <select
-                          value={audience}
-                          onChange={(e) => setAudience(e.target.value)}
-                          className="w-full p-3 border border-stone-300 rounded-lg bg-white outline-none"
-                        >
-                          <option>Umum</option>
-                          <option>Anak Muda / Milenial</option>
-                          <option>Bapak-bapak</option>
-                          <option>Ibu-ibu Pengajian</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Durasi</label>
-                        <select
-                          value={duration}
-                          onChange={(e) => setDuration(e.target.value)}
-                          className="w-full p-3 border border-stone-300 rounded-lg bg-white outline-none"
-                        >
-                          <option>3 Menit</option>
-                          <option>5 Menit</option>
-                          <option>7 Menit</option>
-                          <option>15 Menit</option>
-                          <option>20 Menit</option>
-                        </select>
-                      </div>
-                    </div>
-
                     <div>
-                      <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Tone</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['Santai', 'Tegas', 'Menyentuh', 'Semangat'].map(t => (
-                          <button
-                            key={t}
-                            onClick={() => setTone(t)}
-                            className={cn(
-                              "p-2 text-sm rounded border transition",
-                              tone === t
-                                ? "bg-rose-900 text-white border-rose-900"
-                                : "bg-white border-stone-200 hover:bg-rose-50"
-                            )}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleGenerate}
-                      className="w-full py-4 font-bold rounded-xl shadow-lg bg-gradient-to-r from-rose-800 to-rose-950 text-white hover:from-rose-900 hover:to-rose-950 transition transform active:scale-[0.98] flex justify-center items-center gap-2 mt-2"
-                    >
-                      <Wand2 className="w-5 h-5 text-amber-400" /> Buat Khutbah
-                    </button>
-                  </div>
-                </div>
-              </motion.section>
-            )}
-
-            {step === 'loading' && (
-              <motion.section
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="h-96 flex flex-col items-center justify-center text-center"
-              >
-                <Loader2 className="w-12 h-12 text-rose-700 animate-spin mb-4" />
-                <p className="text-rose-950 font-bold text-lg">Sedang Meracik Naskah...</p>
-                <p className="text-stone-500 text-sm">Menyusun dalil dan narasi dakwah...</p>
-              </motion.section>
-            )}
-
-            {step === 'result' && (
-              <motion.section
-                key="result"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col h-[calc(100vh-140px)] border border-stone-300 rounded-2xl shadow-2xl overflow-hidden bg-white w-full"
-              >
-                <div className="bg-rose-950 text-stone-300 p-4 flex items-center justify-between z-10 border-b border-rose-900">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setStep('input')}
-                      className="flex items-center gap-2 hover:text-white transition text-sm font-medium"
-                    >
-                      <RotateCcw className="w-4 h-4" /> <span className="hidden md:inline">Reset</span>
-                    </button>
-                    <div className="h-6 w-px bg-rose-900"></div>
-                    <div className="flex items-center gap-1 bg-rose-900/50 rounded-lg p-1 border border-rose-900">
-                      <button
-                        onClick={() => setFontSize(prev => Math.max(16, prev - 2))}
-                        className="p-1 hover:bg-rose-900 rounded text-white"
+                      <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Durasi</label>
+                      <select
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                        className="w-full p-3 border border-stone-300 rounded-lg bg-white outline-none"
                       >
-                        <ChevronDown className="w-4 h-4" />
-                      </button>
-                      <span className="text-xs font-mono w-6 text-center text-amber-400">{fontSize}</span>
-                      <button
-                        onClick={() => setFontSize(prev => Math.min(48, prev + 2))}
-                        className="p-1 hover:bg-rose-900 rounded text-white"
-                      >
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
+                        <option>3 Menit</option>
+                        <option>5 Menit</option>
+                        <option>7 Menit</option>
+                        <option>15 Menit</option>
+                        <option>20 Menit</option>
+                      </select>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setShowPreview(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-rose-900 hover:bg-rose-800 text-white rounded-lg border border-rose-800 shadow-sm transition"
-                    >
-                      <FileDown className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-bold uppercase tracking-wide hidden md:inline">Download PDF</span>
-                    </button>
-                    <div className="w-px h-6 bg-rose-900"></div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min="0"
-                        max="5"
-                        step="1"
-                        value={scrollSpeed}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setScrollSpeed(val);
-                          setIsScrolling(val > 0);
-                        }}
-                        className="w-16 md:w-20 h-1.5 bg-rose-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                      />
-                      <button
-                        onClick={() => {
-                          if (!isScrolling && scrollSpeed === 0) setScrollSpeed(1);
-                          setIsScrolling(!isScrolling);
-                        }}
-                        className="p-2 rounded-full shadow-lg bg-rose-700 text-white"
-                      >
-                        {isScrolling ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      </button>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-500 mb-2 uppercase tracking-wide">Tone</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Santai', 'Tegas', 'Menyentuh', 'Semangat'].map(t => (
+                        <button
+                          key={t}
+                          onClick={() => setTone(t)}
+                          className={cn(
+                            "p-2 text-sm rounded border transition",
+                            tone === t
+                              ? "bg-rose-900 text-white border-rose-900"
+                              : "bg-white border-stone-200 hover:bg-rose-50"
+                          )}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>
 
-                <div
-                  ref={scrollAreaRef}
-                  className="flex-1 bg-[#FDFBF7] relative overflow-y-auto p-6 md:p-12 scroll-smooth"
-                >
-                  {renderScriptContent('screen')}
-                  {isScrolling && (
-                    <div className="fixed bottom-8 right-8 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg animate-pulse z-20 font-bold text-xs flex gap-2 items-center">
-                      <div className="w-2 h-2 bg-white rounded-full animate-ping"></div> ON AIR
-                    </div>
-                  )}
+                  <button
+                    onClick={handleGenerate}
+                    className="w-full py-4 font-bold rounded-xl shadow-lg bg-gradient-to-r from-rose-800 to-rose-950 text-white hover:from-rose-900 hover:to-rose-950 transition transform active:scale-[0.98] flex justify-center items-center gap-2 mt-2"
+                  >
+                    <Wand2 className="w-5 h-5 text-amber-400" /> Buat Khutbah
+                  </button>
                 </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
-        </main>
+              </div>
+            </motion.section>
+          )}
 
-        {/* PREVIEW MODAL */}
-        <AnimatePresence>
-          {showPreview && (
-            <motion.div
+          {step === 'loading' && (
+            <motion.section
+              key="loading"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[50] bg-stone-800/90 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 overflow-y-auto"
+              className="h-96 flex flex-col items-center justify-center text-center"
             >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white w-full max-w-[210mm] min-h-[90vh] shadow-2xl rounded-sm flex flex-col relative"
+              <Loader2 className="w-12 h-12 text-rose-700 animate-spin mb-4" />
+              <p className="text-rose-950 font-bold text-lg">Sedang Meracik Naskah...</p>
+              <p className="text-stone-500 text-sm">Menyusun dalil dan narasi dakwah...</p>
+            </motion.section>
+          )}
+
+          {step === 'result' && (
+            <motion.section
+              key="result"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col h-[calc(100vh-140px)] border border-stone-300 rounded-2xl shadow-2xl overflow-hidden bg-white w-full"
+            >
+              <div className="bg-rose-950 text-stone-300 p-4 flex items-center justify-between z-10 border-b border-rose-900">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setStep('input')}
+                    className="flex items-center gap-2 hover:text-white transition text-sm font-medium"
+                  >
+                    <RotateCcw className="w-4 h-4" /> <span className="hidden md:inline">Reset</span>
+                  </button>
+                  <div className="h-6 w-px bg-rose-900"></div>
+                  <div className="flex items-center gap-1 bg-rose-900/50 rounded-lg p-1 border border-rose-900">
+                    <button
+                      onClick={() => setFontSize(prev => Math.max(16, prev - 2))}
+                      className="p-1 hover:bg-rose-900 rounded text-white"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-mono w-6 text-center text-amber-400">{fontSize}</span>
+                    <button
+                      onClick={() => setFontSize(prev => Math.min(48, prev + 2))}
+                      className="p-1 hover:bg-rose-900 rounded text-white"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowPreview(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-rose-900 hover:bg-rose-800 text-white rounded-lg border border-rose-800 shadow-sm transition"
+                  >
+                    <FileDown className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold uppercase tracking-wide hidden md:inline">Download PDF</span>
+                  </button>
+                  <div className="w-px h-6 bg-rose-900"></div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="5"
+                      step="1"
+                      value={scrollSpeed}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setScrollSpeed(val);
+                        setIsScrolling(val > 0);
+                      }}
+                      className="w-16 md:w-20 h-1.5 bg-rose-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!isScrolling && scrollSpeed === 0) setScrollSpeed(1);
+                        setIsScrolling(!isScrolling);
+                      }}
+                      className="p-2 rounded-full shadow-lg bg-rose-700 text-white"
+                    >
+                      {isScrolling ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                ref={scrollAreaRef}
+                className="flex-1 bg-[#FDFBF7] relative overflow-y-auto p-6 md:p-12 scroll-smooth"
               >
-                <div className="bg-rose-950 text-white p-4 flex justify-between items-center sticky top-0 z-10 shadow-md">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-amber-400" />
-                    <span className="font-bold text-sm">Pratinjau PDF</span>
+                {renderScriptContent('screen')}
+                {isScrolling && (
+                  <div className="fixed bottom-8 right-8 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg animate-pulse z-20 font-bold text-xs flex gap-2 items-center">
+                    <div className="w-2 h-2 bg-white rounded-full animate-ping"></div> ON AIR
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowPreview(false)}
-                      className="px-4 py-2 bg-rose-900 hover:bg-rose-800 rounded-lg text-sm"
-                    >
-                      Kembali
-                    </button>
-                    <button
-                      onClick={handleDownloadPdf}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-rose-950 rounded-lg font-bold flex items-center gap-2"
-                    >
-                      Cetak / Simpan PDF
-                    </button>
-                  </div>
-                </div>
-                <div className="bg-white flex-1 p-10 overflow-y-auto">
-                  {renderScriptContent('print')}
-                </div>
-              </motion.div>
-            </motion.div>
+                )}
+              </div>
+            </motion.section>
           )}
         </AnimatePresence>
-      </div>
+      </main>
 
-      {/* Bagian ini adalah AREA KHUSUS PRINT.
-        Secara default disembunyikan (hidden), tetapi akan MUNCUL (print:block)
-        saat proses Print dijalankan, sehingga hanya isi ini yang masuk PDF.
-      */}
-      <div className="hidden print:block w-full bg-white text-black p-8">
-        {step === 'result' && renderScriptContent('print')}
-      </div>
-    </>
+      {/* PREVIEW MODAL */}
+      <AnimatePresence>
+        {showPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[50] bg-stone-800/90 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-[210mm] min-h-[90vh] shadow-2xl rounded-sm flex flex-col relative"
+            >
+              <div className="bg-rose-950 text-white p-4 flex justify-between items-center sticky top-0 z-10 shadow-md">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-amber-400" />
+                  <span className="font-bold text-sm">Pratinjau PDF</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowPreview(false)}
+                    className="px-4 py-2 bg-rose-900 hover:bg-rose-800 rounded-lg text-sm"
+                  >
+                    Kembali
+                  </button>
+                  <button
+                    onClick={handleDownloadPdf}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-rose-950 rounded-lg font-bold flex items-center gap-2"
+                  >
+                    Cetak / Simpan PDF
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white flex-1 p-10 overflow-y-auto">
+                {renderScriptContent('print')}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* OVERLAY LOADING SAAT DOWNLOAD PDF */}
+      <AnimatePresence>
+        {isDownloading && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-rose-950/90 backdrop-blur-sm flex flex-col items-center justify-center text-white"
+          >
+            <Loader2 className="w-16 h-16 animate-spin mb-6 text-amber-400" />
+            <h3 className="font-serif font-bold text-2xl mb-2">Menyiapkan Dokumen PDF</h3>
+            <p className="text-rose-200/80 text-sm px-8 text-center">Sedang merapikan tata letak, mohon jangan tutup halaman ini...</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
