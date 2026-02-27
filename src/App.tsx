@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -404,23 +405,17 @@ export default function App() {
     const durInstruction = durationMap[duration] || duration;
     const userQuery = `Topik: ${topic}, Audience: ${audience}, Durasi: ${duration}. Instruksi Panjang: ${durInstruction}, Tone: ${tone}`;
 
-   const maxRetries = 3; 
-  for (let i = 0; i < maxRetries; i++) {
     try {
       const ai = new GoogleGenAI({ apiKey: finalKey });
-
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash", 
-        contents: [{ parts: [{ text: userQuery }] }], 
+        model: "gemini-2.0-flash",
+        contents: [{ parts: [{ text: userQuery }] }],
         config: {
           systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          maxOutputTokens: 4000, 
-          temperature: 0.7
+          responseMimeType: "application/json"
         }
       });
 
-      // --- KODE ASLI BAPAK UNTUK MEMPROSES JSON ---
       const raw = response.text;
       const parsed = JSON.parse(raw);
       let finalScript = Array.isArray(parsed) ? parsed : (parsed.script || parsed.data || []);
@@ -431,33 +426,11 @@ export default function App() {
       } else {
         throw new Error("Hasil naskah kosong.");
       }
-      
-      return; // Selesai! Hentikan fungsi karena sudah sukses
-
-    } catch (error: any) {
-      const errorMessage = error.message || String(error);
-
-      // --- SISTEM PENAHAN ERROR 429 ---
-      if (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-        if (i < maxRetries - 1) {
-          console.log(`Server sibuk. Mengulang diam-diam... (Percobaan ke-${i + 2})`);
-          // INI PENGGANTI DELAY AGAR TIDAK BLANK PUTIH:
-          await new Promise(resolve => setTimeout(resolve, 2000)); 
-          continue; 
-        } else {
-          console.error("Gagal setelah 3x percobaan:", error);
-          setError("Sistem sedang memproses antrean padat. Mohon tunggu 30 detik lalu klik 'Buat Khutbah' kembali.");
-          setStep('input'); 
-        }
-      } else {
-        // --- ERROR LAINNYA ---
-        console.error("Error Teknis:", error);
-        setError(`Gagal: ${errorMessage}`); 
-        setStep('input');
-        break; 
-      }
+    } catch (e: any) {
+      console.error(e);
+      setError(`Gagal: ${e.message}`);
+      setStep('input');
     }
-  }
   };
 
   const formatLongText = (text?: string) => {
