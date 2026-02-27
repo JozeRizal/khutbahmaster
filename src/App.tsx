@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -25,8 +24,7 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-// Fungsi bantuan untuk menunda eksekusi (delay) dalam milidetik
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const MimbarIcon = ({ className }: { className?: string }) => (
   <svg 
     viewBox="0 0 24 24" 
@@ -405,31 +403,56 @@ export default function App() {
     const durInstruction = durationMap[duration] || duration;
     const userQuery = `Topik: ${topic}, Audience: ${audience}, Durasi: ${duration}. Instruksi Panjang: ${durInstruction}, Tone: ${tone}`;
 
-    try {
-      const ai = new GoogleGenAI({ apiKey: finalKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: userQuery }] }],
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json"
+    // --- SISTEM AUTO-RETRY ANTI ERROR 429 ---
+    const maxRetries = 3;
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: finalKey });
+        const response = await ai.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: [{ parts: [{ text: userQuery }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: "application/json",
+            maxOutputTokens: 4000,
+            temperature: 0.7
+          }
+        });
+
+        const raw = response.text;
+        const parsed = JSON.parse(raw);
+        let finalScript = Array.isArray(parsed) ? parsed : (parsed.script || parsed.data || []);
+
+        if (finalScript.length > 0) {
+          setScript(finalScript);
+          setStep('result');
+          return; // SUKSES! Langsung keluar dari fungsi
+        } else {
+          throw new Error("Hasil naskah kosong.");
         }
-      });
+      } catch (e: any) {
+        const errorMessage = e.message || String(e);
 
-      const raw = response.text;
-      const parsed = JSON.parse(raw);
-      let finalScript = Array.isArray(parsed) ? parsed : (parsed.script || parsed.data || []);
-
-      if (finalScript.length > 0) {
-        setScript(finalScript);
-        setStep('result');
-      } else {
-        throw new Error("Hasil naskah kosong.");
+        // Jika error 429 / Resource Exhausted dari server Google
+        if (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+          if (i < maxRetries - 1) {
+            console.log(`Server sibuk, mengulang diam-diam... (Percobaan ke-${i + 2})`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Diam-diam jeda 2 detik
+            continue; // Putar ulang secara otomatis
+          } else {
+            console.error("Gagal setelah 3x percobaan:", e);
+            setError("Sistem antrean Google sedang penuh. Mohon tunggu 30 detik lalu klik 'Buat Khutbah' kembali.");
+            setStep('input');
+            return;
+          }
+        } else {
+          // Jika error lain (JSON gagal, dll)
+          console.error(e);
+          setError(`Gagal: ${errorMessage}`);
+          setStep('input');
+          return;
+        }
       }
-    } catch (e: any) {
-      console.error(e);
-      setError(`Gagal: ${e.message}`);
-      setStep('input');
     }
   };
 
@@ -875,9 +898,10 @@ export default function App() {
 
                   <button
                     onClick={handleGenerate}
-                    className="w-full py-4 font-bold rounded-xl shadow-lg bg-gradient-to-r from-rose-800 to-rose-950 text-white hover:from-rose-900 hover:to-rose-950 transition transform active:scale-[0.98] flex justify-center items-center gap-2 mt-2"
+                    disabled={step === 'loading'}
+                    className="w-full py-4 font-bold rounded-xl shadow-lg bg-gradient-to-r from-rose-800 to-rose-950 text-white hover:from-rose-900 hover:to-rose-950 transition transform active:scale-[0.98] flex justify-center items-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Wand2 className="w-5 h-5 text-amber-400" /> Buat Khutbah
+                    <Wand2 className="w-5 h-5 text-amber-400" /> {step === 'loading' ? 'Memproses...' : 'Buat Khutbah'}
                   </button>
                 </div>
               </div>
