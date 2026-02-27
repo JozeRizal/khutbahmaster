@@ -24,7 +24,8 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-
+// Fungsi bantuan untuk menunda eksekusi (delay) dalam milidetik
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const MimbarIcon = ({ className }: { className?: string }) => (
   <svg 
     viewBox="0 0 24 24" 
