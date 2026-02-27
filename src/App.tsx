@@ -404,7 +404,7 @@ export default function App() {
     const durInstruction = durationMap[duration] || duration;
     const userQuery = `Topik: ${topic}, Audience: ${audience}, Durasi: ${duration}. Instruksi Panjang: ${durInstruction}, Tone: ${tone}`;
 
-    const maxRetries = 3; 
+   const maxRetries = 3; 
   for (let i = 0; i < maxRetries; i++) {
     try {
       const ai = new GoogleGenAI({ apiKey: finalKey });
@@ -441,7 +441,8 @@ export default function App() {
       if (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
         if (i < maxRetries - 1) {
           console.log(`Server sibuk. Mengulang diam-diam... (Percobaan ke-${i + 2})`);
-          await delay(2000); // Jeda 2 detik sebelum ngulang
+          // INI PENGGANTI DELAY AGAR TIDAK BLANK PUTIH:
+          await new Promise(resolve => setTimeout(resolve, 2000)); 
           continue; 
         } else {
           console.error("Gagal setelah 3x percobaan:", error);
