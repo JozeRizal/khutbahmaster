@@ -414,7 +414,7 @@ export default function App() {
           config: {
             systemInstruction: systemPrompt,
             responseMimeType: "application/json",
-            maxOutputTokens: 8192,
+            maxOutputTokens: 60000,
             temperature: 0.7
           }
         });
