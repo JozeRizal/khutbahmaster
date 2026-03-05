@@ -581,15 +581,16 @@ export default function App() {
       const mainText = block.text || block.content || block.content_text || block.explanation || block.meat || block.story;
       const cue = block.cue || block.cues || (block.type === 'cues' ? (block.text || block.content) : null);
 
-      html += `<div style="margin-bottom: 32px; page-break-inside: avoid;">`;
+      // PERBAIKAN: Menghapus page-break-inside: avoid dari wrapper luar agar PDF bisa memotong per bagian
+      html += `<div style="margin-bottom: 32px;">`;
 
       if (cue) {
-        html += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #92400e; margin-bottom: 16px; font-family: sans-serif;">💡 ${escapeHTML(cue)}</div>`;
+        html += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #92400e; margin-bottom: 16px; font-family: sans-serif; page-break-inside: avoid;">💡 ${escapeHTML(cue)}</div>`;
       }
 
       if (block.title) {
         html += `
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; page-break-inside: avoid;">
             <div style="flex: 1; height: 1px; background-color: #d6d3d1;"></div>
             <span style="font-size: 10px; font-weight: bold; color: #a8a29e; text-transform: uppercase; letter-spacing: 2px; font-family: sans-serif;">${escapeHTML(block.title)}</span>
             <div style="flex: 1; height: 1px; background-color: #d6d3d1;"></div>
@@ -598,13 +599,13 @@ export default function App() {
       }
 
       if (block.arabic && block.arabic.length > 2) {
-        html += `<div style="font-family: 'Traditional Arabic', 'Amiri', serif; text-align: right; line-height: 2.2; margin-bottom: 24px; padding: 16px; background-color: #fafaf9; border-radius: 8px; border: 1px solid #e7e5e4; font-size: 22px;">${escapeHTML(block.arabic)}</div>`;
+        html += `<div style="font-family: 'Traditional Arabic', 'Amiri', serif; text-align: right; line-height: 2.2; margin-bottom: 24px; padding: 16px; background-color: #fafaf9; border-radius: 8px; border: 1px solid #e7e5e4; font-size: 22px; page-break-inside: avoid;">${escapeHTML(block.arabic)}</div>`;
       }
 
       if (mainText) {
         html += `<div style="font-family: Georgia, serif; line-height: 1.8; color: #1c1917; font-size: 13pt; margin-bottom: 16px;">`;
         if (block.greeting) {
-          html += `<p style="font-weight: bold; color: #9f1239; margin-bottom: 8px;">${escapeHTML(block.greeting)}</p>`;
+          html += `<p style="font-weight: bold; color: #9f1239; margin-bottom: 8px; page-break-inside: avoid;">${escapeHTML(block.greeting)}</p>`;
         }
 
         const sentences = escapeHTML(mainText).split('. ');
@@ -612,19 +613,20 @@ export default function App() {
         sentences.forEach((sentence, index) => {
           const s = sentence + (index < sentences.length - 1 ? '. ' : '');
           if ((currentPara + s).length > 450) {
-            if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify;">${currentPara}</p>`;
+            // PERBAIKAN: Memasang page-break-inside pada setiap paragraf
+            if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify; page-break-inside: avoid;">${currentPara}</p>`;
             currentPara = s;
           } else {
             currentPara += s;
           }
         });
-        if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify;">${currentPara}</p>`;
+        if (currentPara) html += `<p style="margin-bottom: 16px; text-align: justify; page-break-inside: avoid;">${currentPara}</p>`;
         html += `</div>`;
       }
 
       if (block.dalil && (block.dalil.arabic || block.dalil.meaning)) {
         html += `
-          <div style="margin-top: 16px; padding: 16px; border: 1px solid #e7e5e4; border-radius: 12px; background-color: #ffffff;">
+          <div style="margin-top: 16px; padding: 16px; border: 1px solid #e7e5e4; border-radius: 12px; background-color: #ffffff; page-break-inside: avoid;">
             <span style="background-color: #ffe4e6; color: #9f1239; font-weight: bold; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; font-size: 10px; font-family: sans-serif;">Dalil</span>
             <p style="font-family: 'Traditional Arabic', 'Amiri', serif; text-align: right; font-size: 20px; margin-top: 12px; margin-bottom: 8px; line-height: 2;">${escapeHTML(block.dalil.arabic || '')}</p>
             <p style="font-size: 12px; color: #b45309; font-weight: bold; margin-top: 8px; margin-bottom: 4px; font-family: sans-serif;">${escapeHTML(block.dalil.source || '')}</p>
@@ -646,7 +648,7 @@ export default function App() {
     });
 
     html += `
-        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e7e5e4; text-align: center; font-size: 10px; color: #a8a29e; font-family: monospace;">
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e7e5e4; text-align: center; font-size: 10px; color: #a8a29e; font-family: monospace; page-break-inside: avoid;">
           Dibuat secara otomatis dengan Khutbah Master AI - by Joze Rizal
         </div>
       </div>
@@ -739,6 +741,8 @@ export default function App() {
                 var element = document.getElementById('pdf-root');
                 var opt = {
                   margin: [15, 10, 15, 10],
+                  // PERBAIKAN: Menambahkan konfigurasi pagebreak agar PDF mengikuti aturan CSS
+                  pagebreak: { mode: ['css', 'legacy'] },
                   image: { type: 'jpeg', quality: 0.98 },
                   html2canvas: { scale: 1.5, useCORS: true, logging: false },
                   jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
