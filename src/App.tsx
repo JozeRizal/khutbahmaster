@@ -409,7 +409,7 @@ export default function App() {
       try {
         const ai = new GoogleGenAI({ apiKey: finalKey });
         const response = await ai.models.generateContent({
-          model: "gemini-flash",
+          model: "gemini-2.0-flash",
           contents: [{ parts: [{ text: userQuery }] }],
           config: {
             systemInstruction: systemPrompt,
